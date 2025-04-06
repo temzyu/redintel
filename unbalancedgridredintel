@@ -1,0 +1,877 @@
+# working version of red intel with unbalanced war room view grid # 
+
+
+import pygame
+import sys
+import time
+import random
+import math
+
+# Initialize Pygame
+pygame.init()
+
+# Screen dimensions
+SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Red Intel - MVP 2.3 (Grid Fix Merged)") # Version bump
+
+# Colors
+BLACK = (0, 0, 0); RED = (255, 0, 0); GREEN = (0, 255, 0); BLUE = (0, 0, 255)
+YELLOW = (255, 255, 0); WHITE = (255, 255, 255); GREY = (128, 128, 128)
+DARK_GREY = (50, 50, 50); GRID_COLOR = (160, 160, 160); SHIP_COLOR = (90, 121, 200)
+PREVIEW_COLOR = pygame.Color(255, 0, 0, 128); CONSULTANT_GREEN = (0, 220, 0)
+BUFFER_COLOR = (20, 20, 40)
+
+# Fonts
+title_font = pygame.font.Font(None, 100); button_font = pygame.font.Font(None, 50)
+label_font = pygame.font.Font(None, 18); status_font = pygame.font.Font(None, 24)
+consultant_font = pygame.font.Font(None, 28); chat_font = pygame.font.Font(None, 20)
+timer_font = pygame.font.Font(None, 60); perk_font = pygame.font.Font(None, 32)
+
+# --- Game Constants ---
+GRID_SIZE = 12; TILE_SIZE = 30
+SELECTION_ANIMATION_DURATION = 0.4
+
+# Ship options
+ship_options = {
+    "T-shape": [(0, 0), (1, 0), (2, 0), (1, -1), (1, 1)], "L-shape": [(0, 0), (1, 0), (2, 0), (2, 1)],
+    "Box": [(0, 0), (0, 1), (1, 0), (1, 1)], "Linear 4": [(0, 0), (1, 0), (2, 0), (3, 0)],
+    "Linear 2": [(0, 0), (1, 0)], "Unit": [(0, 0)]
+}
+
+# Placement UI Constants
+OPTION_BOX_SIZE = 40; OPTION_BOX_PADDING = 8
+submit_button_width_grid, submit_button_height_grid = 100, 40
+submit_button_x_grid = SCREEN_WIDTH - submit_button_width_grid - sunk and winner is None: winner = "Player 1"; game_state = STATE_GAME_OVER; game_over = True; print("GAME OVER - Player 1 Wins!")
+    elif player1_all_sunk and winner is None: winner = "Player 2 (Simulated)"; game_state = STATE_GAME_OVER; game_over = True; print("GAME OVER - Player 2 Wins!")
+    return game_over
+
+def get_all_hidden_ship_coords(player_ship_state):
+    return [coord for ship in player_ship_state if not ship['sunk'] for coord in ship['coords'] if coord not in ship['hits']]
+
+def generate_consultant_options_on_grid(opponent_ship_state, opponent_grid_view):
+    options = []; hidden_enemy_coords = get_all_hidden_ship_coords(opponent_ship_state)
+    guaranteed_hit = random.choice(hidden_enemy_coords) if hidden_enemy_coords else None
+    if guaranteed_hit: options.append(guaranteed_hit)
+    possible_misses = [(c,r) for r in range(GRID_SIZE) for c in range(GRID_SIZE) if opponent_grid_view[r][c] == 'H' and (c, r) != guaranteed_hit and not any((c,r) in ship['coords'] for ship in opponent_ship_state)]
+    random.shuffle(possible_misses); needed_misses = 3 - len(options); options.extend(possible_misses[:needed_misses])
+    while len(options) < 3:
+        rand_x, rand_y = random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)
+        if (rand_x, rand_y) not in options: options.append((rand_x, rand_y))
+    return options[:3]
+
+def get_ai_confidence_color(streak):
+    if streak >= 2: return GREEN
+    elif streak == 1: return YELLOW
+    else: return RED
+
+def get_consultant_response(player_input):
+    player_input = player_input.lower()
+    responses = { "hello": ["Acknowledged.", "Commander.", "Ready."], "hi": ["Acknowledged.", "Commander.", "Ready."],
+                  "status": ["Systems nominal. Awaiting tactical input."], "help": ["Specify target coordinates."],
+                  "last hit": ["Checking logs... Standby."], "10
+submit_button_y_grid = SCREEN_HEIGHT - submit_button_height_grid - 10
+
+# Timers
+WAR_ROOM_DURATION = 30; WAR_ROOM_TRANSITION_TIME = 10
+POST_BATTLE_DISPLAY_DURATION = 3; OPPONENT_TURN_DELAY = 1.5
+
+# Game States
+STATE_MENU = "MENU"; STATE_LOADING = "LOADING"; STATE_PLACEMENT = "PLACEMENT"
+STATE_PLAYER_WAR_ROOM = "PLAYER_WAR_ROOM"; STATE_WAR_ROOM_TRANSITION = "WAR_ROOM_TRANSITION"
+STATE_BATTLE_VIEW = "BATTLE_VIEW"; STATE_POST_BATTLE_DISPLAY = "POST_BATTLE_DISPLAY"
+STATE_OPPONENT_TURN = "OPPONENT_TURN"; STATE_GAME_OVER = "GAME_OVER"
+
+# --- Global Game Variables ---
+game_state = STATE_MENU; clock = pygame.time.Clock(); running = True
+
+# Shared UI elements
+avatar_rect = pygame.Rect(10, 10, 40, 40); avatar_color = (100, 100, 150)
+# war_room_opponent_grid_rect will be calculated locally where needed
+wr_input_box_rect_global = pygame.Rect(0,0,0,0) # Calculated dynamically
+
+# Player/Opponent Data
+player1_grid = []; player2_grid = []; player1_ships_state = []; player2_ships_state = []
+
+# Placement State Variables
+placed_ships = []; placed_ship_names = []; dragging_ship = None; dragging_offset_x = 0; dragging_offset_y = 0
+show_validation_message = False; validation_message_time = 0; preview_visible = True; flash_counter = 0; FLASH_INTERVAL = 30
+
+# War Room State Variables
+war_room_timer_start = 0; consultant_options = []; selected_target = None; player_choice_made =target": ["Select highlighted coordinate."], "attack": ["Select highlighted coordinate."] }
+    for key, possible in responses.items():
+        if key in player_input: return random.choice(possible)
+    if player_input.strip() == "": return "..."
+    return random.choice(["Processing...", "Understood.", "Noted.", "Unable to compute."])
+
+# --- Drawing Functions ---
+def draw_grid_background(x_offset, y_offset, grid_w, grid_h):
+     for x in range(GRID_SIZE + 1): pygame.draw.line(screen, GRID_COLOR, (x_offset + x * TILE_SIZE, y_offset), (x_offset + x * TILE_SIZE, y_offset + grid_h))
+     for y in range(GRID_SIZE + 1): pygame.draw.line(screen, GRID_COLOR, (x_offset, y_offset + y * TILE_SIZE), (x_offset + grid_w, y_offset + y * TILE_SIZE))
+
+def draw_grid_cells(grid_data, x_offset, y_offset, show_ships=False, ship_states=None,
+                    highlighted_coords=None, sel_anim_active=False, sel_target_coord=None):
+    if highlighted_coords is None: highlighted_coords = []
+    if ship_states is None: ship_states = []
+    for r in range(GRID_SIZE):
+        for c in range(GRID_SIZE):
+            rect = pygame.Rect(x_offset + c * TILE_ False; player_choice_correct = False
+consultant_dialogue = ["Consultant online. Awaiting orders."]; player_chat_input = ""; input_active = False
+war_room_transition_end_time = 0
+selection_animation_active = False; selection_animation_end_time = 0
+
+# Transition State Variables
+bonus_menu_rects = {}; bonus_choice = None
+
+# Battle View State Variables
+battle_view_end_time = 0; battle_attack_coord = None; battle_attack_result = None
+
+# Post Battle State Variables
+post_battle_timer_start = 0; ai_confidence_color_value = YELLOW
+
+# Opponent Turn State Variables
+opponent_turn_start_time = 0; opponent_turn_end_time = 0; p2_target_coord = None; p2_hit_result_str = None
+
+# Gameplay Logic Variables
+player1_bonus_streak = 0; player1_corruption_counter = 0
+
+# Game Over Variables
+winner = None
+
+# --- Helper Functions ---
+
+def initialize_game_data():
+    global player1_grid, player2_grid, player1_ships_state, player2_ships_state, player1_bonus_streak, player1_corruption_counter, winner
+    global consultant_dialogue, player_chat_input, input_active, war_room_timer_start, consultant_options, selected_target
+    global player_choice_made, player_choice_correct, bonus_choice, battle_attack_coord, battle_attack_result, p2_target_coord, p2_hit_result_str
+    global selection_animation_active, selection_animation_end_time
+    player1_grid = [['H' for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]; player2_gridSIZE, y_offset + r * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+            tile_state = 'H'; current_coord = (c, r)
+            if 0 <= r < len(grid_data) and 0 <= c < len(grid_data[r]): tile_state = grid_data[r][c]
+            is_selected_anim = sel_anim_active and current_coord == sel_target_coord
+            is_highlighted = current_coord in highlighted_coords
+            if is_selected_anim: pygame.draw.rect(screen, WHITE, rect, 4)
+            elif is_highlighted: pygame.draw.rect(screen, YELLOW, rect, 3)
+            if tile_state == 'M': pygame.draw.circle(screen, BLUE, rect.center, TILE_SIZE // 4)
+            elif tile_state == 'X': pygame.draw.line(screen, RED, rect.topleft, rect.bottomright, 3); pygame.draw.line(screen, RED, rect.topright, rect.bottomleft, 3)
+            elif = [['H' for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
+    player1_ships_state = []; player2_ships_state = []; player1_bonus_streak = 0; player1_corruption_counter = 0; winner = None
+    consultant_dialogue = ["Consultant online. Awaiting orders."]; player_chat_input = ""; input_active = False; war_room_timer_start = 0
+    consultant_options = []; selected_target = None; player_choice_made = False; player_choice_correct = False; bonus_choice = None
+    battle_attack_coord = None; battle_attack_result = None; p2_target_coord = None; p2_hit_result_str = None
+    selection_animation_active = False; selection_animation_end_time = 0
+
+def setup_ship_states_from_placement(player_ships_state show_ships and any(current_coord in ship['coords'] for ship in ship_states): pygame.draw.rect(screen, SHIP_COLOR, rect.inflate(-4, -4))
+
+# War Room Layout Constants
+WR_TOP_H_PARTITION = SCREEN_HEIGHT * 0.45
+WR_CHAT_AREA_X = avatar_rect.right + 10; WR_CHAT_AREA_Y = avatar_rect.y; WR_CHAT_AREA_W = SCREEN_WIDTH - WR_CHAT_AREA_X - 10
+WR_CHAT_HISTORY_MAX_LINES = 5; WR_CONSULTANT_LINE__list, source_placed_ships):
+    player_ships_state_list.clear()
+    for ship in source_placed_ships:
+        coords = [(ship["grid_x"] + dx, ship["grid_y"] + dy) for dx, dy in ship["shape"]]
+        player_ships_state_list.append({'name': ship['name'], 'coords': coords, 'hits': [], 'sunk': False})
+
+def place_ships_randomly(player_ships_state_list):
+    player_ships_stateHEIGHT = 25; WR_CONSULTANT_MAX_H = WR_CHAT_HISTORY_MAX_LINES * WR_CONSULTANT_LINE_HEIGHT
+WR_CONSULTANT_OUTPUT_END_Y = WR_CHAT_AREA_Y + WR_CONSULTANT_MAX_H; WR_INPUT_BOX_H = 24; WR_INPUT_BOX_Y = WR_CONSULTANT_OUTPUT_END_Y + _list.clear(); occupied_coords = set()
+    ship_definitions = list(ship_options.items()); random.shuffle(ship_definitions)
+    for ship_name, shape in ship_definitions:
+        placed = False; attempts = 0; max_attempts_per_ship = 200
+        while not placed and attempts < max_attempts_per_ship:
+            attempts +=5
+WR_GRID_AREA_Y_START = WR_TOP_H_PARTITION + 5; WR_GRID_W = GRID_SIZE * TILE_SIZE; WR_GRID_H = GRID_SIZE * TILE_SIZE
+WR_GRID_X = (SCREEN_WIDTH - WR_GRID_W) // 2; WR_GRID 1; grid_x = random.randint(0, GRID_SIZE - 1); grid_y = random.randint(0, GRID_SIZE - 1)
+            current_ship_coords = set(); valid_placement = True
+            for dx, dy in shape_AREA_H = SCREEN_HEIGHT - WR_GRID_AREA_Y_START - 5
+WR_GRID_Y = WR_GRID_AREA_Y_START + (WR_GRID_AREA_H - WR_GRID_H) //:
+                tile_x = grid_x + dx; tile_y = grid_y + dy
+                if not (0 <= tile_x < GRID_SIZE and 0 2
+if WR_GRID_Y < WR_GRID_AREA_Y_START: WR_GRID_Y = WR_GRID_AREA_Y_START <= tile_y < GRID_SIZE) or (tile_x, tile_y) in occupied_coords: valid_placement = False; break
+                current # Sanity check position
+if WR_GRID_Y + WR_GRID_H > SCREEN_HEIGHT - 5: WR_GRID_Y = SCREEN_HEIGHT - _ship_coords.add((tile_x, tile_y))
+            if not valid_placement: continue
+            is_adjacent = any((check_x, check_y)5 - WR_GRID_H # Sanity check position
+
+def draw_player_war_room(dialogue, player_input_text, is in occupied_coords for x, y in current_ship_coords for check_x in range(x - 1, x + 2) for check_y in range(_input_active, options_to_highlight, timer_value):
+    global war_room_opponent_grid_rect, wr_input_box_rect_global
+    screen.fill(BLACK)
+    avatar_rect.topleft = (10, 10); pygame.draw.rect(screen, avatary - 1, y + 2) if (check_x, check_y) != (x, y)) # Correct adjacency check
+            if is_adjacent:_color, avatar_rect)
+    start_line_index = max(0, len(dialogue) - WR_CHAT_HISTORY_MAX_LINES)
+    for i, line in enumerate(dialogue[start_line_index:]):
+        text_surf continue
+            player_ships_state_list.append({'name': ship_name, 'coords': list(current_ship_coords), 'hits': [], 'sunk': False})
+            occupied_coords.update(current_ship_coords); placed = = consultant_font.render(line, True, CONSULTANT_GREEN); screen.blit(text_surf, (WR_CHAT_AREA_X, WR_CHAT_AREA_Y + i * WR_CONSULTANT_LINE_HEIGHT True
+    print(f"Simulated Player 2 placed {len(player_ships_state_list)} ships.")
+    if len(player_ships_state_list) < len(ship_options): print("Warning: Could not))
+    wr_input_box_rect_global = pygame.Rect(WR_CHAT_AREA_X, WR_INPUT_BOX_Y, WR_CHAT_AREA_W, WR_INPUT_BOX_H)
+    pygame place all simulated ships randomly.")
+
+def check_hit(target_coord, opponent_ships_state):
+    for ship in opponent_ships_state:
+        if not ship['sunk'] and target_coord in ship['coords']: return True, ship
+    return False, None
+
+def update_ship_states(player_.draw.rect(screen, DARK_GREY, wr_input_box_rect_global); pygame.draw.rect(screen, GRID_COLOR, wr_input_box_rect_global, 1)
+    prompt = ">ships_state):
+    all_sunk = True
+    for ship in player_ships_state:
+        if not ship['sunk']:
+            is_ship_sunk = ship['coords'] and all(coord in ship['hits'] for coord in ship['coords'])
+            if "; display_text = prompt + player_input_text
+    if is_input_active and int(time.time() * 2) % 2 == 0: display_text += "_"
+    input_surf = chat_font.render(display_text, True, WHITE is_ship_sunk: ship['sunk'] = True; print(f"'{ship['name']}' Sunk!")
+            else: all); text_rect = input_surf.get_rect(centery=wr_input_box_rect_global.centery); screen.blit(input_surf, (wr_sunk = False
+    return all_sunk
+
+def check_win_condition():
+    global winner, game_state
+    player1_all_sunk = update_ship_states(player1_ships_state); player2_all_sunk = update_ship_states(player2_ships_state_input_box_rect_global.x + 5, text_rect.y))
+    war_room_opponent_grid_rect = pygame.Rect(WR_GRID_X, WR_GRID_Y, WR_GRID_W, WR_GRID_H)
+    draw_grid_background(WR_GRID_X, WR_GRID)
+    game_over = False
+    if player2_all_sunk and winner is None: winner = "Player 1"; game_state = STATE_GAME_OVER; game_over = True; print("GAME OVER - Player _Y, WR_GRID_W, WR_GRID_H)
+    draw_grid_cells(player2_grid, WR_GRID_X, WR_GRID_Y, show_ships=False, highlighted_coords=options_to_highlight1 Wins!")
+    elif player1_all_sunk and winner is None: winner = "Player 2 (Simulated)"; game_state = STATE_GAME_OVER; game_over = True; print("GAME OVER - Player 2 Wins!")
+    return game_over
+
+def get_all_hidden_ship_coords, sel_anim_active=selection_animation_active, sel_target_coord=selected_target)
+    time_left = max(0, WAR_ROOM_DURATION - timer_value); timer_text = timer(player_ship_state):
+    return [coord for ship in player_ship_state if not ship['sunk'] for coord in ship['coords'] if coord not in ship['hits']]
+
+def generate_consultant_options_on_font.render(f"{int(time_left)}", True, RED if time_left <= WAR_ROOM_TRANSITION_TIME else WHITE)
+    timer_rect = timer_text.get_rect(top_grid(opponent_ship_state, opponent_grid_view):
+    options = []; hidden_enemy_coords = get_all_hidden_ship_coords(opponent_ship_state)
+    guaranteed_hit = randomright=(SCREEN_WIDTH - 15, 10)); screen.blit(timer_text, timer_rect)
+
+def draw_war_room_transition(choice_correct, timer_value, bonus_options_map_out):
+.choice(hidden_enemy_coords) if hidden_enemy_coords else None
+    if guaranteed_hit: options.append(guaranteed_hit)
+    possible_misses = [(c,r) for r in range(GRID_    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA); overlay.fill((0, 0, 0, SIZE) for c in range(GRID_SIZE) if opponent_grid_view[r][c] == 'H' and (c, r) != guaranteed_hit and180)); screen.blit(overlay, (0, 0))
+    message = "WAR PERKS AVAILABLE" if choice_correct else "NO BACKUP AVAILABLE"; not any((c,r) in ship['coords'] for ship in opponent_ship_state)]
+    random.shuffle(possible_misses); needed_misses =  message_font = button_font; text_surf = message_font.render(message, True, GREEN if choice_correct else RED)
+    text_rect = text_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)); screen.blit(3 - len(options); options.extend(possible_misses[:needed_misses])
+    while len(options) < 3:
+        rand_x, rand_y = random.randint(0, GRID_SIZE - 1), random.randint(text_surf, text_rect)
+    bonus_options_map_out.clear()
+    if choice_correct:
+        menu_y_start = text_rect.bottom + 30; menu_item_h = 40; menu_item_w0, GRID_SIZE - 1)
+        if (rand_x, rand_y) not in options: options.append((rand_x, rand_y))
+    return options[:3]
+
+def get_ai_confidence_color( = 300; menu_item_padding = 10; available_bonuses = ["Reveal Segment Lv1", "Learn Shape (N/A)", "Attack+ (N/A)"]
+        for i, bonus_name instreak):
+    if streak >= 2: return GREEN
+    elif streak == 1: return YELLOW
+    else: return RED
+
+def get_consultant_response(player_input):
+    """Generates a simple canned response."""
+    player_input = player_input.lower()
+    # Corrected dictionary - removed the erroneous copy-pasted line
+    responses = {
+        "hello": ["Acknowledged.", "Commander.", "Ready."],
+        "hi": ["Acknowledged.", "Commander.", "Ready."],
+        "status": ["Systems nominal. Awaiting tactical input."],
+        "help": ["Specify target coordinates based on provided options."],
+        "last hit": ["Checking logs... Standby."],
+        "target": ["Select highlighted coordinate on the grid."],
+        "attack": ["Select highlighted coordinate on the grid."]
+    }
+    for key, possible in responses.items():
+        if key in player_input:
+            return random.choice(possible)
+    if player_input.strip() == "":
+        return "..." # No input
+    # Default fallback if no keyword matched
+    return random.choice(["Processing...", "Understood.", "Noted.", "Unable to compute. Please clarify."])
+
+# --- Drawing Functions ---, 200)
+            pygame.draw.rect(screen, button_color, button_rect); bonus_text_surf = perk_font.render(bonus_name
+
+def draw_grid_background(x_offset, y_offset, grid_w, grid_h):
+     for x in range(GRID_SIZE + 1): pygame.draw.line(screen, GRID_, True, text_color); bonus_text_rect = bonus_text_surf.get_rect(center=button_rect.center); screen.blit(bonus_text_surf, bonus_text_rect)
+    time_left = max(0, timerCOLOR, (x_offset + x * TILE_SIZE, y_offset), (x_offset + x * TILE_SIZE, y_offset + grid_h))
+     for y in range(GRID_SIZE + 1): pygame.draw_value); timer_text = timer_font.render(f"{int(time_left)}", True, RED); timer_rect = timer_text.get_rect(center=(SCREEN_WIDTH // 2, 30)); screen.blit(timer_text, timer.line(screen, GRID_COLOR, (x_offset, y_offset + y * TILE_SIZE), (x_offset + grid_w, y_offset + y * TILE_SIZE))
+
+def draw_grid_cells(grid__rect)
+
+def draw_battle_view(attack_coord, attack_result_str):
+    screen.fill(BUFFER_COLOR); pygame_ticks = pygamedata, x_offset, y_offset, show_ships=False, ship_states=None,
+                    highlighted_coords=None, sel_anim_active=False, sel_target_coord=None):
+    if highlighted_coords is None: highlighted_coords.time.get_ticks()
+    grid_w = GRID_SIZE * TILE_SIZE; grid_h = GRID_SIZE * TILE_SIZE; buffer_w = 80; total_grid_w = grid_w * 2 + buffer_w; start_x = (SCREEN_WIDTH - total_grid_w = []
+    if ship_states is None: ship_states = []
+    for r in range(GRID_SIZE):
+        for c in range(GRID_SIZE):
+            rect = pygame.Rect(x_offset + c * TILE_SIZE, y_offset + r * TILE_SIZE, T) // 2
+    grid_y = (SCREEN_HEIGHT - grid_h) // 2; p1_grid_x = start_x; p2_grid_x = start_x + grid_w + buffer_w
+    p1_title = status_font.render("Your Fleet Status", True, WHITE); screenILE_SIZE, TILE_SIZE)
+            tile_state = 'H'; current_coord = (c, r)
+            if 0 <= r < len(grid_data) and 0 <= c < len(grid_data[r]): tile_state = grid_data[r][c]
+.blit(p1_title, (p1_grid_x, grid_y - 30))
+    p2_title = status_font.render("Attack Resolution", True, WHITE); screen.blit(p2_title, (p2_grid_x, grid_y - 30))            is_selected_anim = sel_anim_active and current_coord == sel_target_coord
+            is_highlighted = current_coord in highlighted_coords
+            if is_selected_anim: pygame.draw.rect(screen, WHITE, rect, 4)
+            elif is_highlighted:
+    draw_grid_background(p1_grid_x, grid_y, grid_w, grid_h); draw_grid_cells(player1_grid, p1_grid_x, grid_y, show_ships=True, ship_states=player1_ships_state)
+    draw pygame.draw.rect(screen, YELLOW, rect, 3)
+            if tile_state == 'M': pygame.draw.circle(screen, BLUE, rect.center, TILE_SIZE // 4)
+            elif tile__grid_background(p2_grid_x, grid_y, grid_w, grid_h); draw_grid_cells(player2_grid, p2_grid_x, grid_y, show_ships=False)
+    ifstate == 'X': pygame.draw.line(screen, RED, rect.topleft, rect.bottomright, 3); pygame.draw.line(screen, RED, rect.topright, rect.bottomleft, 3)
+            elif show_ships and any( attack_coord and attack_result_str:
+        target_x_on_screen = p2_grid_x + attack_coord[0] * TILE_SIZE; target_y_on_screen = grid_y + attack_coord[1] * TILE_SIZE; target_center = (target_x_on_screen +current_coord in ship['coords'] for ship in ship_states): pygame.draw.rect(screen, SHIP_COLOR, rect.inflate(-4, -4))
+
+# --- War Room Derived Constants ---
+WR_TOP TILE_SIZE // 2, target_y_on_screen + TILE_SIZE // 2)
+        pulse_speed = 0.006; min_radius_factor = 0.6; max_radius_factor = 1.2; pulse_range = max_H_PARTITION = SCREEN_HEIGHT * 0.45; WR_CHAT_AREA_X = avatar_rect.right + 10; WR_CHAT_AREA_Y = avatar_rect.y
+WR_CHAT_AREA_W = SCREEN_WIDTH - WR_CHAT_AREA_X - 10; WR_CHAT_HISTORY_MAX__radius_factor - min_radius_factor
+        current_pulse_factor = min_radius_factor + (pulse_range / 2) * (1 + math.sin(pygame_ticks * pulse_speed)); radius = int(TILE_SIZE * 0.8 * current_pulse_factor); line_width = 4; color = RED if attack_result_str == "HIT" else BLUE
+        if radius >= 1: pygame.draw.circle(screen, color, targetLINES = 5; WR_CONSULTANT_LINE_HEIGHT = 25
+WR_CONSULTANT_MAX_H = WR_CHAT_HISTORY_MAX_LINES * WR_CONSULTANT_LINE_HEIGHT; WR_CONSULTANT_OUTPUT_END_Y = WR_CHAT_AREA_Y + WR_CONSULTANT_MAX_H
+WR_INPUT_BOX_H = 24; WR_INPUT_BOX_center, radius, line_width)
+        result_text = button_font.render(attack_result_str, True, RED if attack_result_str == "HIT" else WHITE); result_rect = result_text.get_rect(center=(SCREEN_WIDTH // 2, grid_y + grid_h + 40)); screen.blit(result_Y = WR_CONSULTANT_OUTPUT_END_Y + 5; WR_GRID_AREA_Y_START = WR_TOP_H_PARTITION + 5
+WR_GRID_W = GRID_SIZE * TILE_SIZE; WR_GRID_H = GRID_SIZE * TILE_SIZE; WR_GRID_X = (SCREEN_WIDTH - WR_GRID_W)_text, result_rect)
+
+def draw_post_battle_display(ai_confidence_color):
+    screen.fill(BLACK); light_radius = 50; light_center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30)
+    pygame.draw.circle(screen, ai // 2
+WR_GRID_AREA_H = SCREEN_HEIGHT - WR_GRID_AREA_Y_START - 5; WR_GRID_Y = WR_GRID_AREA_Y_START + (WR_GRID_AREA_H - WR_GRID_H) // 2
+if WR_GRID_Y < WR__confidence_color, light_center, light_radius); pygame.draw.circle(screen, WHITE, light_center, light_radius, 3)
+    confidence_text_map = { GREEN: "HIGH", YELLOW: "MEDIUM", RED: "LOW" };GRID_AREA_Y_START: WR_GRID_Y = WR_GRID_AREA_Y_START # Prevent overlap
+if WR_GRID_Y + WR_GRID_H > SCREEN_HEIGHT - 5: WR_GRID_Y = SCREEN_HEIGHT - text = f"Consultant Confidence: {confidence_text_map.get(ai_confidence_color, 'UNKNOWN')}"
+    text_surf = button_font.render(text, True, WHITE); text_rect 5 - WR_GRID_H # Prevent going off bottom
+# --- End War Room Constants ---
+
+def draw_player_war_room(dialogue, player_input_text, is_input_active, options_to_highlight = text_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + light_radius + 30)); screen.blit(text_surf, text_rect)
+
+def draw_opponent_turn(p1_grid_, timer_value):
+    global wr_input_box_rect_global, war_room_opponent_grid_rect # Update globals
+    screen.fill(BLACK)to_draw, p2_attack_coord, p2_attack_result):
+    screen.fill(BUFFER_COLOR); pygame_ticks = pygame.time.get_ticks()
+    grid_w = GRID_SIZE * TILE_SIZE; grid_h = GRID_SIZE * T
+    # --- Top Half ---
+    avatar_rect.topleft = (10, 10); pygame.draw.rect(screen, avatar_color, avatar_rect)
+    start_line_index = max(0, len(dialogILE_SIZE; grid_x = (SCREEN_WIDTH - grid_w) // 2; grid_y = (SCREEN_HEIGHT - grid_h) // 2
+    title = button_font.render("Opponent Attack Incoming...", True, WHITE);ue) - WR_CHAT_HISTORY_MAX_LINES)
+    for i, line in enumerate(dialogue[start_line_index:]):
+        text_surf = consultant_font.render(line, True, CONSULTANT_GREEN) title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, grid_y - 40)); screen.blit(title, title_rect)
+    draw_grid_background(grid_x, grid_y, grid
+        screen.blit(text_surf, (WR_CHAT_AREA_X, WR_CHAT_AREA_Y + i * WR_CONSULTANT_LINE_HEIGHT))
+    wr_input_box_rect_global = pygame.Rect(WR_CHAT_w, grid_h); draw_grid_cells(p1_grid_to_draw, grid_x, grid_y, show_ships=True, ship_states=player1_ships_state)
+    if p2_attack_coord and p2_attack_result:
+        _AREA_X, WR_INPUT_BOX_Y, WR_CHAT_AREA_W, WR_INPUT_BOX_H)
+    pygame.draw.rect(screen, DARK_GREY, wr_input_box_rect_global); pygame.draw.rect(screen, GRID_target_x_on_screen = grid_x + p2_attack_coord[0] * TILE_SIZE; target_y_on_screen = grid_y + p2_attack_coord[1] * TILE_SIZE; target_center = (target_x_on_screen + TILE_SIZE // 2, target_y_onCOLOR, wr_input_box_rect_global, 1)
+    prompt = "> "; display_text = prompt + player_input_text
+    if is_input_active and int(time.time() * 2) % 2 == 0: display_text += "_"
+    input_surf = chat_font.render(display_text, True, WHITE_screen + TILE_SIZE // 2)
+        pulse_speed = 0.006; min_radius_factor = 0.6; max_radius_factor = 1.2; pulse_range = max_radius_factor - min_radius_factor
+        current_pulse_factor = min_radius_factor + (pulse_range /); text_rect = input_surf.get_rect(centery=wr_input_box_rect_global.centery)
+    screen.blit(input_surf, (wr_input_box_rect_global.x + 5, text_rect.y))
+    # 2) * (1 + math.sin(pygame_ticks * pulse_speed)); radius = int(TILE_SIZE * 0.8 * current_pulse_factor); line_width = 4; color = RED --- Bottom Half ---
+    war_room_opponent_grid_rect = pygame.Rect(WR_GRID_X, WR_GRID_Y, WR_GRID_W, WR_GRID_H) # Use calculated constants
+    draw_grid_background(WR_GRID_X, WR_ if p2_attack_result == "HIT" else BLUE
+        if radius >= 1:GRID_Y, WR_GRID_W, WR_GRID_H)
+    draw_grid_cells(player2_grid, WR_GRID_X, WR_GRID pygame.draw.circle(screen, color, target_center, radius, line_width)
+        result_text = status_font.render(p2_attack_result,_Y, show_ships=False,
+                    highlighted_coords=options_to_highlight,
+                    sel_anim_active=selection_animation_active, # Pass anim flag
+                    sel_target_coord=selected_target)           True, RED if p2_attack_result == "HIT" else WHITE); result_rect = result_text.get_rect(center=(SCREEN_WIDTH // 2, grid_y + grid_h + 30)); screen.blit(result# Pass selected coord
+    # --- Timer ---
+    time_left = max(0, WAR_ROOM_DURATION - timer_value); timer_text = timer_font.render_text, result_rect)
+
+def draw_game_over(winner_name):
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame(f"{int(time_left)}", True, RED if time_left <= WAR_ROOM_TRANS.SRCALPHA); overlay.fill((0, 0, 0, 180)); screen.blit(overlay, (0, 0))
+    result_msgITION_TIME else WHITE)
+    timer_rect = timer_text.get_rect(topright=(SCREEN_WIDTH - 15, 10)); screen.blit(timer_text, timer_rect)
+
+def draw = f"{winner_name} Wins!"; result_text = title_font.render(result_msg, True, GREEN if "Player 1" in winner_name else RED); result_rect = result_text.get_rect(center=(SCREEN_WIDTH_war_room_transition(choice_correct, timer_value, bonus_options_map_out):
+    # Note: Redrawing base war // 2, SCREEN_HEIGHT // 2 - 50)); screen.blit(result_text, result_rect)
+    rematch_font = pygame.font.Font(None, 40); rematch_text = rematch_font. room slightly dimmed can look better, but complex. Overlay is simpler.
+    overlayrender("Press R for New Game or Q to Quit", True, WHITE); rematch_rect = rematch_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)); screen.blit = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA); overlay.fill((0, 0, 0, (rematch_text, rematch_rect)
+
+# --- Placement Phase Functions ---
+def is_adjacent_to_placed_ships_placement(grid_x, grid_y180)); screen.blit(overlay, (0, 0))
+    message = "WAR PERKS AVAILABLE" if choice_correct else "NO BACKUP AVAILABLE";, shape):
+    for ship in placed_ships:
+        for dx, dy in ship[" message_font = button_font
+    text_surf = message_fontshape"]: placed_x = ship["grid_x"] + dx; placed_y = ship["grid.render(message, True, GREEN if choice_correct else RED)
+    text_rect = text_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_y"] + dy
+        for sx, sy in shape: tile_x = grid_x + sx; tile_y = grid_y + sy
+        if abs(tile_x -_HEIGHT // 2 - 50)); screen.blit(text_surf, text_rect)
+    bonus_options_map_out.clear()
+    if choice_correct:
+        menu_y_start = text_rect.bottom + 30; menu_item_h =  placed_x) <= 1 and abs(tile_y - placed_y) <= 1: return True
+    return False
+
+def draw_ship_options_placement():
+    total_options_width = len(ship_options) * OPTION_BOX_SIZE + (len(ship_options) - 1) * OPTION_40; menu_item_w = 300; menu_item_padding = 10
+        available_bonuses = ["Reveal Segment Lv1", "Learn Shape (N/A)", "Attack+ (N/A)"]
+        for i, bonus_name in enumerate(available_bonuses):
+            button_rect = pygame.RectBOX_PADDING; options_y = SCREEN_HEIGHT - OPTION_BOX_SIZE - 60; start_options_x = (SCREEN_WIDTH - total_options_width) // 2; current_option_x = start_options_x
+    for ship_name, ship_shape in ship_options((SCREEN_WIDTH - menu_item_w) // 2, menu_y_start + i * (menu_item_h + menu_item_padding), menu_item_w, menu_item_h)
+            bonus_options_map_out[bonus_name] = button_rect; is_functional = (.items():
+        option_x = current_option_x; option_y = options_y; option_rect = pygame.Rect(option_x, option_y, OPTION_BOX_SIZE, OPTION_BOX_SIZE)
+        if ship_name in placed_ship_names: pygame.draw.rect(screen, DARK_GREY,bonus_name == "Reveal Segment Lv1")
+            button_color = WHITE if is_functional else DARK_GREY; text_color = BLACK
+            mouse_pos = pygame.mouse.get_pos();
+            if is_functional and button_rect.collidepoint(mouse_pos): button_color = (200, 200, 200)
+             option_rect); pygame.draw.rect(screen, GRID_COLOR, option_rect, 1)
+        else:
+            pygame.draw.rect(screen, (30, 30, 30), option_rect); pygame.draw.rect(screen, GRID_COLOR, option_rect, 1); tile_pygame.draw.rect(screen, button_color, button_rect)
+            bonus_text_surf = perk_font.render(bonus_name, True, text_color); bonus_text_rect = bonus_text_surf.get_rect(center=button_rect.center); screen.blitrender_size = 6
+            min_x = min(p[0] for p in ship_shape); min_y = min(p[1] for p in ship_shape); rel_coords = [(p[0] - min_x, p[1] - min_y) for p in ship_shape]
+            ship_w = (max(p[0] for p in rel_coords(bonus_text_surf, bonus_text_rect)
+    time_left = max(0, timer_value); timer_text = timer_font.render(f"{int(time_left)}", True, RED)
+    timer_rect = timer_text.get_rect(center=(SCREEN_WIDTH // 2, 30)); screen.blit(timer_text, timer) + 1) * tile_render_size; ship_h = (max(p[1] for p in rel_coords) + 1) * tile_render_size
+            render_start_x = option_x + (OPTION_BOX_SIZE - ship_w) // 2; render_start_y = option_y + (OPTION_BOX_SIZE - ship_rect)
+
+def draw_battle_view(attack_coord, attack_result_str):
+    screen.fill(BUFFER_COLOR); pygame_ticks = pygame.time.get_ticks()
+    grid_w = GRID_SIZE * TILE_SIZE; grid_h = GRID_SIZE * TILE_SIZE; buffer_w = 80
+    total_grid_w = grid_w * 2 + buffer_w; start_x = (SCREEN_WIDTH -_h) // 2
+            for dx, dy in rel_coords: pygame.draw.rect(screen, SHIP_COLOR, (render_start_x + dx*tile_render_size, render_start_y + dy*tile_render_size, tile_render_size-1, tile_render_size-1))
+        current_option_x += OPTION_BOX_SIZE + OPTION_BOX_PADDING
+
+def draw_flashing_preview_placement(grid_ total_grid_w) // 2
+    grid_y = (SCREEN_HEIGHT - grid_h) // 2
+    p1_grid_x = start_x; p2_grid_x = start_x + grid_w + buffer_w
+    p1_title = status_font.render("Your Fleet Status", True, WHITE); screen.blit(p1_title, (p1_grid_x, grid_y - 30))x_main, grid_y_main):
+    global preview_visible, flash_counter
+    if dragging_ship:
+        flash_counter = (flash_counter + 1) % (FLASH_INTERVAL * 2); preview_visible = flash_counter < FLASH_INTERVAL
+        mouse_x, mouse_y = pygame.mouse.get_pos(); origin_mouse_x = mouse_x - dragging_offset_x; origin
+    p2_title = status_font.render("Attack Resolution", True, WHITE); screen.blit(p2_title, (p2_grid_x, grid_y - 30))
+    draw_grid_background(p1_grid_x, grid_y, grid_w, grid_h); draw_grid_cells(player1_grid, p1_grid_x, grid_y, show_ships=True, ship__mouse_y = mouse_y - dragging_offset_y
+        grid_x = (origin_mouse_x - grid_x_main + TILE_SIZE // 2) // TILE_SIZE; grid_y = (origin_mouse_y - grid_y_main + TILE_SIZE // 2) // TILE_SIZE
+        valid_placement = True; collision = False; adjacent = False; preview_rects = []
+        for dx, dy in draggingstates=player1_ships_state)
+    draw_grid_background(p2_grid_x, grid_y, grid_w, grid_h); draw_grid_cells(player2_grid, p2_grid_x, grid_y, show_ships=False)
+    if attack_coord and attack_result_str:
+        target_x_on_screen = p2_grid_x + attack_coord[0] * TILE_ship["shape"]:
+            tile_x = grid_x + dx; tile_y = grid_y + dy
+            if not (0 <= tile_x < GRID_SIZE and 0 <= tile_y < GRID_SIZE): valid_placement = False; break
+            if any((tile_x, tile_y) in [(s["grid_x"]+pdx, s["grid_y"]+pdy) for pdx,pdy in s["shape"]]_SIZE; target_y_on_screen = grid_y + attack_coord[1] * TILE_SIZE
+        target_center = (target_x_on_screen + TILE_SIZE // 2, target_y_on_screen + TILE_SIZE // 2)
+        pulse_speed = 0.006; min_radius_factor = 0.6; max_radius_factor = 1.2; pulse_range = max_radius_factor - min_radius_factor
+        current_pulse_factor = min_radius for s in placed_ships): collision = True; break
+            preview_rects.append(pygame.Rect(grid_x_main + tile_x * TILE_SIZE, grid_y_main + tile_y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+        if not valid_placement or collision:_factor + (pulse_range / 2) * (1 + math.sin(pygame_ticks * pulse_speed))
+        radius = int(TILE_SIZE * 0.8 * current_pulse_factor); line_width = 4; color = RED if attack_result_str == "HIT" else BLUE
+        if radius >= 1: pygame.draw.circle(screen, color, target_center, radius, line_width)
+        result_text = button_font. valid_placement = False
+        if valid_placement and is_adjacent_to_placed_ships_placement(grid_x, grid_y, dragging_ship["shape"]): valid_placement = False
+        if preview_visible:
+            preview_surface = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA); preview_surface.fill((0, 255, 0, 100) if valid_placement else (255, 0,render(attack_result_str, True, RED if attack_result_str == "HIT" else WHITE)
+        result_rect = result_text.get_rect(center=(SCREEN_WIDTH // 2, grid_y + grid_h + 40)); screen.blit(result_text, result_rect)
+
+def draw_post_battle_display(ai_confidence_color):
+    screen.fill(BLACK)
+    light 0, 100))
+            for rect in preview_rects: screen.blit(preview_surface, rect.topleft)
+
+def draw_dragging_ship_placement(grid_x_main, grid_y_main):
+    if dragging_ship:
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        for dx, dy in dragging_ship["shape"]: rect_radius = 50; light_center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 30)
+    pygame.draw.circle(screen, ai_confidence_color, light_center, light_radius); pygame.draw.circle(screen, WHITE, light_center, light_radius, 3) = pygame.Rect(mouse_x - dragging_offset_x + dx * TILE_SIZE, mouse_y - dragging_offset_y + dy * TILE_SIZE, TILE_SIZE-1, TILE_SIZE-1); pygame.draw.rect(screen, SHIP_COLOR, rect)
+
+def draw_placed_ships_placement(grid_x_main,
+    confidence_text_map = { GREEN: "HIGH", YELLOW: "MEDIUM", RED: "LOW" }; text = f"Consultant Confidence: {confidence_text_map.get(ai_confidence_color, 'UNKNOWN')}"
+    text_surf = button_font.render(text, True, WHITE)
+    text_rect = text_surf.get_rect(center=( grid_y_main):
+     for ship in placed_ships:
+        for dx, dy in ship["shape"]: rect = pygame.Rect(grid_x_main + (ship["grid_x"] + dx) * TILE_SIZE, grid_y_main + (ship["grid_y"] + dy) * TILE_SIZE, TILE_SIZE-1, TILE_SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + light_radius + 30)); screen.blit(text_surf, text_rect)
+
+def draw_opponent_turn(p1_grid_to_draw, p2_attack_coord, p2_attack_result):
+    screen.fill(BUFFER_COLOR); pygame_ticks = pygameSIZE-1); pygame.draw.rect(screen, SHIP_COLOR, rect)
+
+def draw_placement_validation_message():
+    global show_validation_message
+    if not show_validation_message: return; current_ticks = pygame.time.get_ticks()
+    if current_ticks - validation_message_time > 20.time.get_ticks()
+    grid_w = GRID_SIZE * TILE_SIZE; grid_h = GRID_SIZE * TILE_SIZE; grid_x = (SCREEN_WIDTH - grid_w) // 2; grid_y = (SCREEN_HEIGHT - grid_h) // 2
+    title = button_font.render("Opponent Attack Incoming...", True, WHITE); title00: show_validation_message = False; return
+    message_text = "Place all your ships"; small_font = pygame.font.Font(None, 24); message_surface = small_font.render(message_text, True, BLACK)
+    text_width, text_height = message_surface.get__rect = title.get_rect(center=(SCREEN_WIDTH // 2, grid_y - 40)); screen.blit(title, title_rect)
+    draw_grid_background(grid_x, grid_y, grid_w, grid_h); draw_grid_cells(p1_grid_to_draw, grid_x, grid_y, show_ships=True, shipsize(); padding = 5; message_box_width = text_width + 2 * padding; message_box_height = text_height + 2 * padding
+    message_box_x = SCREEN_WIDTH - message_box_width - 10; message_box_y = submit_button_y_grid - message_box_height - 5
+    pygame.draw.rect(screen, WHITE, (message_box__states=player1_ships_state)
+    if p2_attack_coord and p2_attack_result:
+        target_x_on_screen = grid_x + p2_attack_coord[0] * TILE_SIZE; target_y_on_screen = grid_y + p2_attack_coord[1] * TILE_SIZE
+        target_center = (target_x, message_box_y, message_box_width, message_box_height)); pygame.draw.rect(screen, BLACK, (message_box_x, message_box_y, message_box_width, message_box_height), 1)
+    screen.blit(message_surface, (message_box_x + padding, message_box_y + padding))
+
+def handle_placement_drag_drop(eventx_on_screen + TILE_SIZE // 2, target_y_on_screen + TILE_SIZE // 2)
+        pulse_speed = 0.006; min_radius_factor = 0.6; max_radius_factor = 1.2; pulse_range = max_radius_factor - min_radius_factor
+        current_pulse_factor = min_radius_factor + (pulse_range / 2) * (1 + math.sin(pygame_, grid_x_main, grid_y_main, options_y_start):
+     global dragging_ship, dragging_offset_x, dragging_offset_y, placed_ships, placed_ship_names
+     if event.type == pygame.MOUSEBUTTONDOWN:
+         mouse_x, mouse_y = event.pos; total_options_width = len(ship_options) * OPTION_BOXticks * pulse_speed))
+        radius = int(TILE_SIZE * 0.8 * current_pulse_factor); line_width = 4; color = RED if p2_attack_result == "HIT" else BLUE
+        if radius >= 1: pygame.draw.circle(screen, color, target_center, radius, line_width)
+        result_text = status_font.render(p2_attack_result, True, RED if p2_attack_result == "HIT" else WHITE_SIZE + (len(ship_options) - 1) * OPTION_BOX_PADDING; start_options_x = (SCREEN_WIDTH - total_options_width) // 2; current_option_x = start_options_x
+         for ship_name, ship_shape in ship_options.items():
+             if ship_name not in placed_ship_names:
+                 option_rect = pygame.Rect(current_option_x, options_y_start, OPTION_BOX_SIZE, OPTION)
+        result_rect = result_text.get_rect(center=(SCREEN_WIDTH // 2, grid_y + grid_h + 30)); screen.blit(result_text, result_rect)
+
+def draw_game_over(winner_name):
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA); overlay.fill((0, 0, 0, 180)); screen.blit(overlay, (0, 0))
+    result_BOX_SIZE)
+                 if option_rect.collidepoint(mouse_x, mouse_y): dragging_ship = {"name": ship_name, "shape": ship_shape}; dragging_offset_x = TILE_SIZE // 2; dragging_offset_y = TILE_SIZE // 2; break
+             current_option_x += OPTION_BOX_SIZE + OPTION__msg = f"{winner_name} Wins!"; result_text = title_font.render(result_msg, True, GREEN if "Player 1" in winner_name else RED)
+    result_rect = result_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50)); screen.blit(result_text, result_rectBOX_PADDING
+     elif event.type == pygame.MOUSEBUTTONUP:
+         if dragging_ship:
+             mouse_x, mouse_y = event.pos; origin_mouse_x = mouse_x - dragging_offset_x; origin_mouse_y = mouse_y - dragging_offset_y; grid_x = (origin_mouse_x - grid_x_main + TILE_SIZE // 2) // TILE_SIZE; grid_)
+    rematch_font = pygame.font.Font(None, 40); rematch_text = rematch_font.render("Press R for New Game or Q to Quit", True, WHITE)
+    rematch_rect = rematch_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)); screen.blit(rematch_text, rematch_rect)
+
+# --- Placement Phase Functions ---
+def is_adjacent_to_placed_ships_placementy = (origin_mouse_y - grid_y_main + TILE_SIZE // 2) // TILE_SIZE
+             valid_placement = True; collision = False; adjacent = False
+             for dx, dy in dragging_ship["shape"]:
+                 tile_x = grid_x + dx; tile_y = grid_y + dy
+                 if not (0 <= tile_x < GRID_SIZE and 0 <= tile_y < GRID_SIZE): valid_placement = False; break
+                 if any((tile_x, tile_y) in [(s(grid_x, grid_y, shape):
+    for ship in placed_ships:
+        for dx, dy in ship["shape"]:
+            placed_x = ship["grid_x"] + dx; placed_y = ship["grid_y"] + dy
+            for sx, sy in shape:
+                tile_x = grid_x + sx; tile_y = grid_y + sy
+                if abs(tile_x - placed_x) <= 1 and abs(tile_["grid_x"]+pdx, s["grid_y"]+pdy) for pdx,pdy in s["shape"]] for s in placed_ships): collision = True; break
+             if not valid_placement or collision: valid_placement = False
+             if valid_placement and is_adjacent_to_placed_ships_placement(grid_x, grid_y, dragging_ship["shape"]): valid_placement = False
+             if valid_placement: placed_ships.append({"name": draggingy - placed_y) <= 1: return True
+    return False
+
+def draw_ship_options_placement():
+    total_options_width = len(ship_options) * OPTION_BOX_SIZE + (len(ship_options) - 1) * OPTION_BOX_PADDING
+    options_y = SCREEN_HEIGHT - OPTION_BOX_SIZE - 60; start_options_x = (SCREEN_WIDTH - total_options_width)_ship["name"], "shape": dragging_ship["shape"], "grid_x": grid_x, "grid_y": grid_y}); placed_ship_names.append(dragging_ship["name"])
+             dragging_ship = None
+     elif event.type == pygame.MOUSEMOTION: pass
+
+# --- Main Game Loop ---
+while running:
+    pygame_ticks = pygame.time.get_ticks(); current_time_sec // 2
+    current_option_x = start_options_x
+    for ship_name, ship_shape in ship_options.items():
+        option_x = current_option_x; option_y = options_y
+        option_rect = pygame.Rect(option_x, option_y, OPTION_BOX_SIZE, OPTION_BOX_SIZE)
+        if ship_name in placed_ship_names: pygame.draw.rect = time.time()
+    events = pygame.event.get()
+    for event in events:
+        if event.type == pygame.QUIT: running = False
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE: running = False
+
+        # --- State-Specific Event Handling ---
+        if game_state == STATE_MENU:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                button_width_menu, button_height(screen, DARK_GREY, option_rect); pygame.draw.rect(screen, GRID_COLOR, option_rect, 1)
+        else:
+            pygame.draw.rect(screen, (30, 30, 30), option_rect); pygame.draw.rect(screen, GRID_menu = 200, 60; button_x_menu = (SCREEN_WIDTH - button_width_menu) // 2; button_y_menu = SCREEN_HEIGHT // 2 + 50
+                menu_button_rect = pygame.Rect(button_x_menu, button_y_menu, button_width_menu, button_height_menu)
+                if menu_button_rect_COLOR, option_rect, 1)
+            tile_render_size = 6; min_x = min(p[0] for p in ship_shape); min_y = min(p[1] for p in ship_shape)
+            rel_coords = [(p[0] - min_x, p[1] - min_y) for p in ship_shape]
+            ship_w = (max(p[0] for p in rel_coords) + 1) * tile_render_size; ship_h = (max(p[1] for p in rel.collidepoint(event.pos): game_state = STATE_LOADING; loading_end_time = pygame_ticks + 2000
+        elif game_state == STATE_PLACEMENT:
+             placement_grid_w = GRID_SIZE * TILE_SIZE; placement_grid_h = GRID_SIZE * TILE_SIZE; placement_grid_x = (SCREEN_WIDTH - placement_grid_w) //_coords) + 1) * tile_render_size
+            render_start_x = option_x + (OPTION_BOX_SIZE - ship_w) // 2; render_start_y = option_y + (OPTION_BOX_SIZE - ship_h) // 2
+            for dx, dy in rel_coords: pygame.draw.rect(screen, SHIP_COLOR, (render_start_x + dx*tile_render_size, render_start_y + dy*tile_ 2; placement_grid_y = 50
+             options_area_y = SCREEN_HEIGHT - OPTION_BOX_SIZE - 60
+             handle_placement_drag_drop(event, placement_grid_x, placement_grid_y, options_area_y)
+             if event.type == pygame.MOUSEBUTTONDOWN and not dragging_ship:
+                 submit_rect = pygame.Rect(submit_button_x_grid, submit_button_y_grid, submitrender_size, tile_render_size-1, tile_render_size-1))
+        current_option_x += OPTION_BOX_SIZE + OPTION_BOX_PADDING
+
+def draw_flashing_preview_placement(grid_x_main, grid_y_main):
+    global preview_visible, flash_counter
+    if dragging_ship:
+        _button_width_grid, submit_button_height_grid)
+                 if submit_rect.collidepoint(event.pos):
+                     if len(placed_ship_names) == len(ship_options): initialize_game_data(); setup_ship_states_from_placement(player1_ships_state, placed_ships); place_ships_randomly(player2_ships_state);flash_counter = (flash_counter + 1) % (FLASH_INTERVAL * 2); preview_visible = flash_counter < FLASH_INTERVAL
+        mouse_x, mouse_y = pygame.mouse.get_pos(); origin_mouse_x = mouse_x - dragging_offset_x; origin_mouse_y = mouse_y game_state = STATE_PLAYER_WAR_ROOM
+                     else: show_validation_message = True; validation_message_time = pygame_ticks
+        elif game_state == STATE_PLAYER_WAR_ROOM:
+             # --- Calculate collision rects based on War Room layout constants ---
+             input_box_rect_for_collision - dragging_offset_y
+        grid_x = (origin_mouse_x - grid_x_main + TILE_SIZE // 2) // TILE_SIZE; grid_y = (origin_mouse_y - grid_y_main + TILE_SIZE // 2) // TILE_SIZE
+        valid_placement = True; collision = False; adjacent = False; preview_rects = []
+        for dx, dy in dragging_ship["shape"]:
+            tile = pygame.Rect(WR_CHAT_AREA_X, WR_INPUT_BOX_Y, WR_CHAT_AREA_W, WR_INPUT_BOX_H)
+             grid_rect_for_collision = pygame.Rect(WR_GRID_X, WR_GRID_Y, WR_GRID_W, WR_x = grid_x + dx; tile_y = grid_y + dy
+            if not (0 <= tile_x < GRID_SIZE and 0 <= tile_y < GRID_SIZE): valid_placement = False; break
+            if any((tile_x, tile_y) in [(s["grid_x"]+pdx, s["grid_y_GRID_H)
+             # --------------------------------------------------------------------
+             if event.type == pygame.MOUSEBUTTONDOWN:
+                 if input_box_rect_for_collision.collidepoint(event.pos): input_active = True;
+                 elif not player_choice_made and grid"]+pdy) for pdx,pdy in s["shape"]] for s in placed_ships): collision = True; break
+            preview_rects.append(pygame.Rect(grid_x_main + tile_x * TILE_SIZE, grid_y_main + tile_y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+_rect_for_collision.collidepoint(event.pos):
+                      input_active = False
+                      grid_col = (event.pos[0] - grid_rect_for_collision.x) // TILE_SIZE; grid_row = (event.pos[1] - grid_rect_for_collision.y) // TILE_SIZE
+                      clicked_coord = (grid_col,        if not valid_placement or collision: valid_placement = False
+        if valid_placement and is_adjacent_to_placed_ships_placement(grid_x, grid_y, dragging_ship["shape"]): valid_placement = False
+        if preview_visible:
+            preview_surface = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SR grid_row)
+                      if clicked_coord in consultant_options:
+                           selected_target = clicked_coord; player_choice_made = True
+                           hit, _ = check_hit(selected_target, player2_ships_state); player_choice_correct = hit
+                           selection_animation_active = True #CALPHA); preview_surface.fill((0, 255, 0, 100) if valid_placement else (255, 0, 0, 100))
+            for rect in preview_rects: screen.blit(preview_surface, rect.topleft)
+
+def draw_dragging_ship_placement(grid_x_main, grid_y_main):
+    if dragging_ship Start anim
+                           selection_animation_end_time = current_time_sec + SELECTION_ANIMATION_DURATION # Set end time
+                 else: input_active = False
+             if event.type == pygame.KEYDOWN and input_active:
+                 if event.key == pygame.K_RETURN:
+                     if player_chat:
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        for dx, dy in dragging_ship["shape"]:
+            rect = pygame.Rect(mouse_x - dragging_offset_x + dx * TILE_SIZE, mouse_y - dragging_offset_y + dy * TILE_SIZE, TILE_SIZE-1, TILE_SIZE-1_input: consultant_dialogue.append("> " + player_chat_input); response = get_consultant_response(player_chat_input); consultant_dialogue.append(response); player_chat_input = ""
+                 elif event.key == pygame.K_BACKSPACE: player_chat_input = player_chat_input[:-1]
+                 elif event.unicode.isprintable() and len(player)
+            pygame.draw.rect(screen, SHIP_COLOR, rect)
+
+def draw_placed_ships_placement(grid_x_main, grid_y_main):
+     for ship in placed_ships:
+        for dx, dy in ship["shape"]:
+            rect = pygame.Rect(grid_x_main + (ship["grid_x"] + dx) * TILE_SIZE, grid_y_main + (ship["grid_y"] + dy_chat_input) < 50: player_chat_input += event.unicode
+        elif game_state == STATE_WAR_ROOM_TRANSITION:
+             if player_choice_correct and event.type == pygame.MOUSEBUTTONDOWN:
+                 for bonus_name, rect in bonus_menu_rects.items():
+                      if rect.collidepoint(event.pos) and bonus_name == "Reveal Segment Lv1) * TILE_SIZE, TILE_SIZE-1, TILE_SIZE-1)
+            pygame.draw.rect(screen, SHIP_COLOR, rect)
+
+def draw_placement_validation_message():
+    global show_validation_message
+    if not show_validation_message: return
+    current_ticks = pygame.time.get_ticks()
+    if current_ticks - validation_message_time > 2000: show_validation_message":
+                           bonus_choice = bonus_name; print(f"Bonus chosen: {bonus_choice}")
+                           if bonus_choice == "Reveal Segment Lv1" and selected_target:
+                                hit_x, hit_y = selected_target; possible_reveals = []
+                                for dx, dy in [(0,-1),(0,1),(-1,0),(1,0)]:
+                                     check_x = False; return
+    message_text = "Place all your ships"; small_font = pygame.font.Font(None, 24); message_surface = small_font.render(message_text, True, BLACK)
+    text_width, text_height = message_surface.get_size(); padding = 5; message_box_width = text_width + 2 * padding; message_box_height = text_height + 2 * padding
+    message_, check_y = hit_x+dx, hit_y+dy
+                                     if 0 <= check_x < GRID_SIZE and 0 <= check_y < GRID_SIZE and player2_grid[check_y][check_x] == 'H': possible_reveals.append((check_x, check_y))
+                                if possible_reveals:
+                                     reveal_coord = random.choice(possible_reveals); rx, ry = reveal_coord; is_ship, _ = check_hitbox_x = SCREEN_WIDTH - message_box_width - 10; message_box_y = submit_button_y_grid - message_box_height - 5
+    pygame.draw.rect(screen, WHITE, (message_box_x, message_box_y, message_box_width, message_box_height)); pygame.draw.rect(screen, BLACK, (message_box_x, message_box_y, message_box_width, message_box_height), 1)
+    screen.blit((reveal_coord, player2_ships_state)
+                                     player2_grid[ry][rx] = 'X' if is_ship else 'M'; print(f"Bonus revealed {reveal_coord} as {'Ship' if is_ship else 'Water'}")
+                           if player_choice_correct: # Update streak/corruption immediately after bonus chosen
+                                player1_bonus_streak += 1; player1_corruption_counter += 1
+                                ifmessage_surface, (message_box_x + padding, message_box_y + padding))
+
+def handle_placement_drag_drop(event, grid_x_main, grid_y_main, options_y_start):
+     global dragging_ship, dragging_offset_x, dragging_offset_y, placed_ships, placed_ship_names
+     if event.type == pygame.MOUSEBUTTONDOWN:
+         mouse_x, mouse_y = event.pos
+         total_options_width = len(ship_options) * OPTION_BOX_SIZE + (len(ship_options) player1_corruption_counter >= 3:
+                                     if random.random() < 0.9: print("Corruption Triggered! Streak will reset post-battle.")
+                                     player1_corruption_counter = 0
+                           else: player1_bonus_streak = 0; player1_corruption_counter = 0 # Should not happen here
+                           game_state = STATE_BATTLE_VIEW; battle_view_end_time = current_time_sec + 4.0
+                           battle_attack_coord = selected_target; battle_attack_result - 1) * OPTION_BOX_PADDING; start_options_x = (SCREEN_WIDTH - total_options_width) // 2
+         current_option_x = start_options_x
+         for ship_name, ship_shape in ship_options.items():
+             if ship_name not in placed_ship_names:
+                 option_rect = pygame.Rect(current_option_x, options_y_start, OPTION_BOX_SIZE, OPTION_BOX_SIZE)
+                 if option_rect.collidepoint(mouse = "HIT"
+                           break
+        elif game_state == STATE_GAME_OVER:
+             if event.type == pygame.KEYDOWN:
+                 if event.key == pygame.K_q: running = False
+                 elif event.key == pygame.K_r: game_state = STATE_MENU; initialize_game_data(); # Needs placement_x, mouse_y):
+                     dragging_ship = {"name": ship_name, "shape": ship_shape}; dragging_offset_x = TILE_SIZE // 2; dragging_offset_y = TILE_SIZE // 2; break
+             current_option_x += OPTION_BOX_SIZE + OPTION_BOX_PADDING
+     elif event.type == pygame.MOUSEBUTTONUP:
+         if dragging_ship:
+             mouse_x, mouse_y lists reset too
+                 placed_ships = []; placed_ship_names = [] # Reset placement lists for rematch
+
+    # --- Game Logic / State Updates ---
+    if game_state == STATE_LOADING:
+        if pygame_ticks >= loading_end_time: game_state = STATE_PLACEMENT; placed_ships = []; placed_ship_names = []; dragging_ship = None; show_validation_message = False
+    elif game_state == STATE_PLAYER_WAR_ = event.pos; origin_mouse_x = mouse_x - dragging_offset_x; origin_mouse_y = mouse_y - dragging_offset_y
+             grid_x = (origin_mouse_x - grid_x_main + TILE_SIZE // 2) // TILE_SIZE; grid_y = (origin_mouse_y - grid_y_main + TILE_SIZE // 2) // TILE_SIZE
+             valid_placement = True; collision = False; adjacent = False
+             for dx, dy in dragging_ship["shape"]:
+                 tileROOM:
+        if war_room_timer_start == 0: war_room_timer_start = current_time_sec; player_choice_made = False; selected_target = None; consultant_options = generate_consultant_options_on_grid(player2_ships_state, player2_grid); selection_animation_active = False
+        if selection_animation_active and current_time_sec >= selection_animation_end_time: selection_animation_active = False #_x = grid_x + dx; tile_y = grid_y + dy
+                 if not (0 <= tile_x < GRID_SIZE and 0 <= tile_y < GRID_SIZE): valid_placement = False; break
+                 if any((tile_x, tile_y) in [(s["grid_x"]+pdx, s["grid_y"]+pdy) for pdx,pdy in s["shape"]] for s in placed_ships): collision = True; break
+             if Stop anim
+        time_elapsed = current_time_sec - war_room_timer_start
+        if player_choice_made and time_elapsed >= (WAR_ROOM_DURATION - WAR_ROOM_TRANSITION_TIME):
+             war_room_transition_end_time = current_time_sec + WAR_ROOM_TRANSITION_TIME; game_state = STATE_WAR_ROOM_TRANSITION; bonus_choice = None; selection_animation_active = False
+        elif time_elapsed >= WAR_ROOM_DURATION not valid_placement or collision: valid_placement = False
+             if valid_placement and is_adjacent_to_placed_ships_placement(grid_x, grid_y, dragging_ship["shape"]): valid_placement = False
+             if valid_placement:
+                 placed_ships.append({"name": dragging_ship["name"], "shape": dragging_ship["shape"], "grid_x": grid_x, "grid_y": grid_y})
+                 placed_ship_names.append(dragging_ship["name"])
+             dragging_ship = None
+:
+             print("War Room Timeout"); player_choice_made = True; player_choice_correct = False; selected_target = None
+             war_room_transition_end_time = current_time_sec + WAR_ROOM_TRANSITION_TIME; game_state = STATE_WAR_ROOM_TRANSITION; bonus_choice = None; selection_animation_active = False
+    elif game_state     elif event.type == pygame.MOUSEMOTION: pass
+
+# --- Main Game Loop ---
+while running:
+    pygame_ticks = pygame.time.get_ticks(); current_time_sec = time.time()
+    events = pygame.event.get()
+    for event in events:
+        if event.type == pygame.QUIT: running = False
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE: running = False
+
+        # --- State-Specific Event Handling ---
+        if game == STATE_WAR_ROOM_TRANSITION:
+         if current_time_sec >= war_room_transition_end_time and game_state == STATE_WAR_ROOM_TRANSITION: # Check state hasn't already changed
+            if bonus_choice is None: # Apply streak only if bonus *wasn't* chosen (_state == STATE_MENU:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                button_width_menu, button_height_menu = 200, 60; button_x_menu = (SCREEN_WIDTH - button_width_menu) // 2; button_y_menu = SCREEN_HEIGHT // 2 + 50
+                menu_button_rect = pygame.Rect(button_x_menu, button_y_menu, button_width_menu,handled in event otherwise)
+                 if player_choice_correct:
+                     player1_bonus_streak += 1; player1_corruption_counter += 1
+                     if player1_corruption_counter >= 3:
+                          if random.random() < 0.9: print("Corruption Triggered! Streak will reset post-battle.")
+                          player1_corruption_ button_height_menu)
+                if menu_button_rect.collidepoint(event.pos): game_state = STATE_LOADING; loading_end_time = pygame_ticks + 2000
+        elif game_state == STATE_PLACEMENT:
+             placement_grid_w = GRID_SIZE * TILE_SIZE; placement_grid_h = GRID_SIZE * TILE_SIZE; placement_counter = 0
+                 else: player1_bonus_streak = 0; player1_corruption_counter = 0;
+            game_state = STATE_BATTLE_VIEW; battle_view_end_time = current_time_sec + 4.0
+            battle_attack_coord = selected_target; battle_attack_resultgrid_x = (SCREEN_WIDTH - placement_grid_w) // 2; placement_grid_y = 50
+             options_area_y = SCREEN_HEIGHT - OPTION_BOX_SIZE - 60
+             handle_placement_drag_drop(event, placement_grid_x, placement_grid_y, options = "HIT" if player_choice_correct else "MISS"
+
+    elif game_state == STATE_BATTLE_VIEW:
+        if current_time_sec >= battle_view_end_time:
+             if battle_attack_coord:
+                 tx, ty = battle_attack_coord
+                 if 0 <= tx < GRID_SIZE and 0 <= ty < GRID_SIZE and player2_grid_area_y)
+             if event.type == pygame.MOUSEBUTTONDOWN and not dragging_ship:
+                 submit_rect = pygame.Rect(submit_button_x_grid, submit_button_y_grid, submit_button_width_grid, submit_button_height_grid)
+                 if submit_rect.collidepoint(event.pos):
+                     if len(placed_ship_names) == len(ship_options):
+                          initialize_game_data(); setup_[ty][tx] == 'H': player2_grid[ty][tx] = 'X' if battle_attack_result == "HIT" else 'M'
+                 if battle_attack_result == "HIT":
+                      hit, ship_hit = check_hit(battle_attack_coord, player2_ships_state)
+                      if hit and battle_attack_coord not in ship_hit['hits']: ship_hit['hits'].append(battle_attack_ship_states_from_placement(player1_ships_state, placed_ships); place_ships_randomly(player2_ships_state); game_state = STATE_PLAYER_WAR_ROOM
+                     else: show_validation_message = True; validation_message_time = pygame_ticks
+        elif game_state == STATE_PLAYER_WAR_ROOM:
+             # --- Calculate dynamic rects for collision ---coord)
+             if not check_win_condition(): game_state = STATE_POST_BATTLE_DISPLAY; post_battle_timer_start = current_time_sec
+    elif game_state == STATE_POST_BATTLE_DISPLAY:
+        ai_confidence_color_value = get_ai_confidence_color(player1_bonus_streak)
+        if current_time_sec - post_battle_timer_start >= POST_BATTLE_DISPLAY_DURATION
+             input_box_rect_for_collision = pygame.Rect(WR_CHAT_AREA_X, WR_INPUT_BOX_Y, WR_CHAT_AREA_W, WR_INPUT_BOX_H)
+             grid_y_for_collision = WR_GRID_Y # Use the same:
+            opponent_turn_start_time = current_time_sec; opponent_turn_end_time = opponent_turn_start_time + OPPONENT_TURN_DELAY
+            p2_target_coord, p2_hit_result_str = None, None; possible_targets = [(c,r) for r in range(GRID_SIZE) for c in range(GRID_SIZE final Y as drawing
+             grid_rect_for_collision = pygame.Rect(WR_GRID_X, grid_y_for_collision, WR_GRID_W, WR_GRID_H)
+             # --- End rect calculation ---
+
+             if event.type == pygame.MOUSEBUTTONDOWN:
+) if player1_grid[r][c] == 'H']
+            if possible_targets:
+                p2_target_coord = random.choice(possible_targets); p2_hit, p2_ship_hit = check_hit(p2_target_coord, player1_ships_state)
+                p2_hit_result_str = "HIT" if p2_hit                 if input_box_rect_for_collision.collidepoint(event.pos): input_active = True
+                 elif not player_choice_made and grid_rect_for_collision.collidepoint(event.pos):
+                      input_active = False
+                      grid_col = (event.pos[0] - grid_rect_for_collision.x) // TILE_SIZE
+                      grid_row = (event. else "MISS"
+                if p2_target_coord:
+                    px, py = p2_target_coord
+                    if 0 <= px < GRID_SIZE and 0 <= py < GRID_SIZE: player1_grid[py][px] = 'X' if p2_hitpos[1] - grid_rect_for_collision.y) // TILE_SIZE
+                      clicked_coord = (grid_col, grid_row)
+                      if clicked_coord in consultant_options:
+                           selected_target = clicked_coord; player_choice_made = True
+                           hit, _ = check_hit(selected_target, player2 else 'M'
+                    if p2_hit and p2_ship_hit and p2_target_coord not in p2_ship_hit['hits']: p2_ship_hit['hits'].append(p2_target_coord)
+            game_state = STATE_OPPONENT_TURN
+    elif game_state == STATE_OPPONENT_TURN:
+        if current_time_sec >= opponent_turn_end_time:
+_ships_state); player_choice_correct = hit
+                           selection_animation_active = True # Start anim
+                           selection_animation_end_time = current_time_sec + SELECTION_ANIMATION_DURATION
+                 else: input_active = False
+             if event.type == pygame.KEYDOWN and input_active:
+                 if event.key == pygame.K_RETURN:
+                     if player            if not check_win_condition(): game_state = STATE_PLAYER_WAR_ROOM; war_room_timer_start = 0
+
+    # --- Drawing ---
+    screen.fill(BLACK)
+    if game_state == STATE_MENU:
+        title_text = title_font.render("Red Intel MVP", True, RED); title_rect = title_text._chat_input: consultant_dialogue.append("> " + player_chat_input); response = get_consultant_response(player_chat_input); consultant_dialogue.append(response); player_chat_input = ""
+                 elif event.key == pygame.K_BACKSPACE: player_chat_input = player_chat_input[:-1]
+                 elif event.unicode.isprintable() andget_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 4)); screen.blit(title_text, title_rect)
+        button_width_menu, button_height_menu = 200, 60; button_x_menu = (SCREEN_WIDTH - button_width_menu) // 2; button_y_menu = SCREEN_HEIGHT // 2 +  len(player_chat_input) < 50: player_chat_input += event.unicode
+        elif game_state == STATE_WAR_ROOM_TRANSITION:
+             if player_choice_correct and event.type == pygame.MOUSEBUTTONDOWN:
+                 for bonus_name, rect in bonus_menu_rect50; menu_button_rect = pygame.Rect(button_x_menu, button_y_menu, button_width_menu, button_height_menu); pygame.draw.rect(screen, WHITE, menu_button_rect)
+        button_text = button_font.render("New Game", True, BLACK); button_text_rect = button_text.get_rect(center=menu_button_s.items():
+                      if rect.collidepoint(event.pos) and bonus_name == "Reveal Segment Lv1":
+                           bonus_choice = bonus_name; print(f"Bonus chosen: {bonus_choice}")
+                           # Apply bonus effect NOW
+                           if bonus_choice == "Reveal Segment Lv1" and selected_rect.center); screen.blit(button_text, button_text_rect)
+    elif game_state == STATE_LOADING:
+        loading_text = button_font.render("Loading...", True, WHITE); loading_rect = loading_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)); screen.blit(loading_text, loading_rect)
+    elif game_state == STATE_PLACEMENT:
+         target:
+                                hit_x, hit_y = selected_target; possible_reveals = []
+                                for dx, dy in [(0,-1),(0,1),(-1,0),(1,0)]:
+                                     check_x, check_y = hit_x+dx, hit_y+dy
+                                     if 0 <= check_x < GRID_SIZE and 0 <= check_y < GRID_SIZE and player2_grid[check_y][check_x] == 'H': possible_reveplacement_grid_w = GRID_SIZE * TILE_SIZE; placement_grid_h = GRID_SIZE * TILE_SIZE; placement_grid_x = (SCREEN_WIDTH - placement_grid_w) // 2; placement_grid_y = 50; options_area_y = SCREEN_HEIGHT - OPTION_BOX_SIZE - 60
+         screen.fill((6als.append((check_x, check_y))
+                                if possible_reveals:
+                                     reveal_coord = random.choice(possible_reveals); rx, ry = reveal_coord; is_ship, _ = check_hit(reveal_coord, player2_ships_state)
+                                     player2_grid[ry][rx] = 'X' if is_ship else 'M'; print(f"Bonus revealed {0, 51, 154)); draw_grid_background(placement_grid_x, placement_grid_y, placement_grid_w, placement_grid_h); draw_placed_ships_placement(placement_grid_x, placement_grid_y); draw_ship_options_placement()
+         submit_rect = pygame.Rect(submit_button_x_grid, submit_button_y_grid, submit_button_width_grid, submit_button_height_grid); pygame.draw.rect(screen, WHITE, submit_rect);reveal_coord} as {'Ship' if is_ship else 'Water'}")
+                           # Update Streak/Corruption NOW
+                           if player_choice_correct:
+                                player1_bonus_streak += 1; player1_corruption_counter += 1
+                                if player1_corruption_counter >= 3:
+                                     if random.random() < 0.9: print("Corruption Triggered! Streak will reset post-battle.")
+                                     player1_corruption_counter = 0
+                           else: player1_bonus_streak submit_text = label_font.render("Submit Fleet", True, BLACK); submit_text_rect = submit_text.get_rect(center=submit_rect.center); screen.blit(submit_text, submit_text_rect)
+         if dragging_ship: draw_flashing_preview_placement(placement_grid_x, placement_grid_y); draw_dragging_ship_placement(placement_grid_x, placement_grid_y)
+         draw_placement_validation_message()
+    elif game_state = 0; player1_corruption_counter = 0
+                           # Transition NOW
+                           game_state = STATE_BATTLE_VIEW
+                           battle_view_end_time = current_time_sec + 4.0
+                           battle_attack_coord = selected_target; battle_attack_result = "HIT"
+                           break
+        elif game_state == STATE_GAME_OVER:
+             if event.type == pygame.KEYDOWN:
+                 if event.key == pygame.K_q == STATE_PLAYER_WAR_ROOM:
+        time_elapsed = current_time_sec - war_room_timer_start if war_room_timer_start > 0 else 0; draw_player_war_room(consultant_dialogue, player_chat_input, input_active, consultant_options, time_elapsed)
+    elif game_state == STATE_WAR_ROOM_TRANSITION:
+        time_remaining_transition = max(0, war_room_transition_end_time - current_time: running = False
+                 elif event.key == pygame.K_r: game_state = STATE_MENU; initialize_game_data(); placed_ships = []; placed_ship_names = []; dragging_ship = None # Reset placement too
+
+    # --- Game Logic / State Updates ---
+    if game_state == STATE_LOADING:
+        if pygame_ticks >= loading_end_time: game_state = STATE_PLACEMENT; placed_ships = []; placed_ship_names = []; dragging_ship_sec); draw_war_room_transition(player_choice_correct, time_remaining_transition, bonus_menu_rects)
+    elif game_state == STATE_BATTLE_VIEW: draw_battle_view(battle_attack_coord, battle_attack_result)
+    elif game_state == STATE_POST_BATTLE_DISPLAY: draw_post_battle_display(ai_confidence_color_value)
+    elif game_state == STATE_OPPONENT_TURN: draw_opponent_turn(player1_grid, p2_target = None; show_validation_message = False
+    elif game_state == STATE_PLAYER_WAR_ROOM:
+        if war_room_timer_start == 0: war_room_timer_start = current_time_sec; player_choice_made = False; selected_target = None; consultant_options = generate_consultant_options_on_grid(player2_ships_state, player2_grid); selection_animation_active = False
+        if selection_coord, p2_hit_result_str)
+    elif game_state == STATE_GAME_OVER: draw_game_over(winner)
+
+    pygame.display.flip()
+    clock.tick(60)
+
+pygame.quit()
+sys.exit() 
